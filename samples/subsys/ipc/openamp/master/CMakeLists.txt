@@ -12,7 +12,7 @@ set(PLATFORM_DIR          "${CMAKE_CURRENT_SOURCE_DIR}/../platform")
 target_include_directories(app PRIVATE $ENV{ZEPHYR_BASE}/drivers)
 target_include_directories(app PRIVATE $ENV{ZEPHYR_BASE}/samples/subsys/ipc/openamp/remote/build/zephyr)
 
-target_sources(app PRIVATE src/main_master.c ${PLATFORM_DIR}/platform.c ${PLATFORM_DIR}/platform_ops.c ${PLATFORM_DIR}/resource_table.c)
+target_sources(app PRIVATE src/main_master.c)
 if(CONFIG_SOC_SERIES_LPC54XXX)
 	target_sources(app PRIVATE $ENV{ZEPHYR_BASE}/ext/hal/nxp/mcux/devices/LPC54114/incbin.S)
 	target_compile_options(app PRIVATE -Wa,-I$ENV{ZEPHYR_BASE}/samples/subsys/ipc/openamp/remote/build/zephyr)
