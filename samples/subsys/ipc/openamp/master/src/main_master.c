@@ -19,25 +19,9 @@
 K_THREAD_STACK_DEFINE(thread_stack, APP_TASK_STACK_SIZE);
 static struct k_thread thread_data;
 
-static struct rpmsg_channel *rp_channel;
-static struct rpmsg_endpoint *rp_endpoint;
-
-static K_SEM_DEFINE(channel_created, 0, 1);
-
-static K_SEM_DEFINE(message_received, 0, 1);
-static volatile unsigned int received_data;
-
-static struct rsc_table_info rsc_info;
-
 #define SHM_START_ADDRESS       0x04000400
 #define SHM_SIZE                0x7c00
 #define SHM_DEVICE_NAME         "sramx.shm"
-
-#define VRING_COUNT             2
-#define VRING_RX_ADDRESS        0x04000400
-#define VRING_TX_ADDRESS        0x04000800
-#define VRING_ALIGNMENT         4
-#define VRING_SIZE              32
 
 static metal_phys_addr_t shm_physmap[] = { SHM_START_ADDRESS };
 static struct metal_device shm_device = {
@@ -59,6 +43,27 @@ static struct metal_device shm_device = {
 	.irq_num = 0,
 	.irq_info = NULL
 };
+
+#define VRING_COUNT             2
+#define VRING_RX_ADDRESS        0x04000400
+#define VRING_TX_ADDRESS        0x04000800
+#define VRING_ALIGNMENT         4
+#define VRING_SIZE              32
+
+
+
+#if 0
+
+static struct rpmsg_channel *rp_channel;
+static struct rpmsg_endpoint *rp_endpoint;
+
+static K_SEM_DEFINE(channel_created, 0, 1);
+
+static K_SEM_DEFINE(message_received, 0, 1);
+static volatile unsigned int received_data;
+
+static struct rsc_table_info rsc_info;
+
 
 #define RSC_TABLE_ADDRESS       0x04000000
 
@@ -124,9 +129,7 @@ static unsigned int receive_message(void)
 {
 	while (k_sem_take(&message_received, K_NO_WAIT) != 0) {
 		;
-#if 0
 		hil_poll(proc, 0);
-#endif
 	}
 	return received_data;
 }
@@ -135,6 +138,20 @@ static int send_message(unsigned int message)
 {
 	return rpmsg_send(rp_channel, &message, sizeof(message));
 }
+#endif
+
+
+static struct virtio_vring rvrings[2] = {
+	[0] = {
+		.align = VRING_ALIGNMENT,
+	},	
+	[1] = {
+		.align = VRING_ALIGNMENT,
+	},	
+};
+static struct virtio_device vdev;
+static struct rpmsg_virtio_device rvdev;
+static struct metal_io_region *io;
 
 void app_task(void *arg1, void *arg2, void *arg3)
 {
@@ -142,47 +159,55 @@ void app_task(void *arg1, void *arg2, void *arg3)
 	ARG_UNUSED(arg2);
 	ARG_UNUSED(arg3);
 	int status = 0;
+	struct metal_device *device;
 
 	printk("\r\nOpenAMP demo started\r\n");
 
 	struct metal_init_params metal_params = METAL_INIT_DEFAULTS;
 	metal_init(&metal_params);
 
+	printk("metal init\n");
+
 	status = metal_register_generic_device(&shm_device);
 	if (status != 0) {
 		printk("metal_register_generic_device(): could not register shared memory device: error code %d\n", status);
-		goto _cleanup;
 	}
 
-	resource_table_init((void **) &rsc_info.rsc_tab, &rsc_info.size);
+	printk("metal_register\n");
 
-	while (k_sem_take(&channel_created, K_NO_WAIT) != 0) {
-#if 0
-		hil_poll(proc, 0);
-#endif
-		;
-	}
+        status = metal_device_open("generic", SHM_DEVICE_NAME, &device);
 
-	unsigned int message = 0;
-	status = send_message(message);
-	if (status < 0) {
-		printk("send_message(%d) failed with status %d\n", message, status);
-		goto _cleanup;
-	}
+	printk("device open %d\n", status);
 
-	while (message <= 100) {
-		message = receive_message();
-		printk("Primary core received a message: %d\n", message);
+        if (status != 0) {
+                printk("metal_device_open failed %d\n", status);
+        }
 
-		message++;
-		status = send_message(message);
-		if (status < 0) {
-			printk("send_message(%d) failed with status %d\n", message, status);
-			goto _cleanup;
-		}
-	}
+        io = metal_device_io_region(device, 0);
 
-_cleanup:
+	printk("set io %p\n", io);
+
+	/* setup vdev */
+	vdev.role = RPMSG_MASTER;
+	vdev.vrings_num = VRING_COUNT;
+	rvrings[0].io = io;
+	rvrings[0].va = VRING_TX_ADDRESS;
+	rvrings[0].num_descs = VRING_SIZE;
+	rvrings[0].align = VRING_ALIGNMENT;
+
+	rvrings[1].io = io;
+	rvrings[1].va = VRING_RX_ADDRESS;
+	rvrings[1].num_descs = VRING_SIZE;
+	rvrings[1].align = VRING_ALIGNMENT;
+	vdev.rvrings = &rvrings[0];
+
+	/* setup rvdev */
+	rvdev.vdev = &vdev;
+
+	rpmsg_init_vdev(&rvdev, &vdev, (void *)SHM_START_ADDRESS, SHM_SIZE);
+
+	printk("rpmsg_init_vdev DONE\n");
+
 	metal_finish();
 
 	printk("OpenAMP demo ended.\n");
