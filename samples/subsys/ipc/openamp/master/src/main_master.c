@@ -152,6 +152,7 @@ static struct virtio_vring rvrings[2] = {
 static struct virtio_device vdev;
 static struct rpmsg_virtio_device rvdev;
 static struct metal_io_region *io;
+static struct virtqueue vq[2];
 
 void app_task(void *arg1, void *arg2, void *arg3)
 {
@@ -194,11 +195,14 @@ void app_task(void *arg1, void *arg2, void *arg3)
 	rvrings[0].va = VRING_TX_ADDRESS;
 	rvrings[0].num_descs = VRING_SIZE;
 	rvrings[0].align = VRING_ALIGNMENT;
+	rvrings[0].vq = &vq[0];
 
 	rvrings[1].io = io;
 	rvrings[1].va = VRING_RX_ADDRESS;
 	rvrings[1].num_descs = VRING_SIZE;
 	rvrings[1].align = VRING_ALIGNMENT;
+	rvrings[1].vq = &vq[1];
+
 	vdev.rvrings = &rvrings[0];
 
 	/* setup rvdev */
